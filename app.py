@@ -27,7 +27,7 @@ st.markdown("""
     }
     div[data-testid="stMetricValue"] { font-size: 2rem !important; font-weight: 900 !important; color: #FF69B4 !important;}
     
-    /* 底部图例文字样式：适中大小，不过分抢占图表风头 */
+    /* 底部图例文字样式 */
     .legend-text { font-size: 14.5px !important; color: #555; font-weight: 500 !important; line-height: 1.6;}
     .legend-text b { color: #2C3E50; font-weight: 800 !important; }
     </style>
@@ -35,12 +35,10 @@ st.markdown("""
 
 # --- 智能文本处理函数 ---
 def extract_existing_letter(text):
-    """提取已有的 A, B, C 等标号"""
     match = re.match(r'^([A-Za-z])[\.、\s]', str(text).strip())
     return match.group(1).upper() if match else None
 
 def clean_full_text(text):
-    """去掉选项全称前面的 'A. ', 'B、' 等前缀"""
     return re.sub(r'^([A-Za-z])[\.、\s]+', '', str(text).strip())
 
 # --- 2. 侧边栏 ---
@@ -72,23 +70,21 @@ if uploaded_file:
         res_df, others_list = SurveyEngine.process_question(df, selected_q)
 
         if res_df is not None:
-            # === 核心逻辑：智能分配顺延标号 ===
+            # === 修复后的安全顺延标号逻辑 ===
             res_df["现有标号"] = res_df["选项"].apply(extract_existing_letter)
             existing_letters = res_df["现有标号"].dropna().tolist()
-            
-            # 找到当前用到的最大字母（如 'F'），准备顺延
             next_char_code = ord(max(existing_letters)) + 1 if existing_letters else ord('A')
             
-            def assign_short_label(row):
-                nonlocal next_char_code
-                if pd.notna(row["现有标号"]):
-                    return row["现有标号"]
+            # 使用安全的 for 循环代替容易报错的 apply+nonlocal
+            final_labels = []
+            for val in res_df["现有标号"]:
+                if pd.notna(val):
+                    final_labels.append(val)
                 else:
-                    new_letter = chr(next_char_code)
-                    next_char_code += 1 # 顺延给下一个没有字母的选项
-                    return new_letter
-
-            res_df["简称"] = res_df.apply(assign_short_label, axis=1)
+                    final_labels.append(chr(next_char_code))
+                    next_char_code += 1 # 顺延字母
+                    
+            res_df["简称"] = final_labels
             res_df["纯净解释"] = res_df["选项"].apply(clean_full_text)
             
             # 按 ABCD 强制重新排序
@@ -105,7 +101,7 @@ if uploaded_file:
                 if chart_type == "横向柱状图":
                     fig = px.bar(res_df, x="频数", y="简称", text="占比(%)", orientation='h', color="简称", color_discrete_sequence=current_colors)
                     fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside', textfont=dict(size=15, weight='bold'))
-                    fig.update_layout(yaxis=dict(autorange="reversed"), bargap=0.4, showlegend=False) # bargap=0.4 让柱子变细
+                    fig.update_layout(yaxis=dict(autorange="reversed"), bargap=0.4, showlegend=False)
                 
                 elif chart_type == "竖向柱状图":
                     fig = px.bar(res_df, x="简称", y="频数", text="占比(%)", color="简称", color_discrete_sequence=current_colors)
@@ -117,7 +113,7 @@ if uploaded_file:
                     fig.update_traces(textposition='inside', textinfo='percent+label', insidetextfont=dict(color='white', size=16, family='Arial Black', weight='bold'))
 
                 fig.update_layout(
-                    height=450, # 增加图表高度，突出“图是主题”
+                    height=450, 
                     plot_bgcolor='#FFFFFF', paper_bgcolor='#FFFFFF',
                     margin=dict(t=20, l=10, r=20, b=10),
                     xaxis=dict(showgrid=True, gridcolor='#F0F2F6', title=""),
@@ -131,7 +127,6 @@ if uploaded_file:
                 # ==== 2. 下半部分：文字解释图例 ====
                 st.markdown('<div class="legend-box-bottom">', unsafe_allow_html=True)
                 st.markdown("#### 📌 选项对照说明")
-                # 使用 Flexbox 自动排版，省空间又整齐
                 legend_html = "<div style='display: flex; flex-wrap: wrap; gap: 10px;'>"
                 for short_k, pure_v in legend_dict.items():
                     legend_html += f"<div style='flex: 1 1 45%; min-width: 250px;' class='legend-text'><b>{short_k}</b> — {pure_v}</div>"
@@ -144,7 +139,7 @@ if uploaded_file:
                 st.markdown("### 📋 频率明细表")
                 st.dataframe(
                     res_df[["简称", "选项", "频数", "占比(%)"]].style.format({"占比(%)": "{:.2f}%"}),
-                    use_container_width=True, hide_index=True, height=520 # 调高表格以对齐左侧图文
+                    use_container_width=True, hide_index=True, height=520
                 )
                 
                 csv_data = res_df[["选项", "频数", "占比(%)"]].to_csv(index=False).encode('utf-8-sig')

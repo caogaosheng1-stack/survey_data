@@ -2,9 +2,64 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 import re
-from analysis_engine import SurveyEngine
+from collections import Counter
 
-# --- 1. 全局配置与高级卡片模板 CSS ---
+# ==========================================
+# 🧠 第一部分：后台数据分析引擎 (内置防报错)
+# ==========================================
+class SurveyEngine:
+    @staticmethod
+    def load_data(file):
+        if file.name.endswith('.csv'):
+            return pd.read_csv(file)
+        return pd.read_excel(file, engine='openpyxl')
+
+    @staticmethod
+    def get_palettes():
+        return {
+            '基础系 (Primary)': ['#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8', '#F67280', '#C06C84', '#6C5B7B'],
+            '马卡龙 (Pastel)': ['#FFB3BA', '#BAFFC9', '#BAE1FF', '#FFFFBA', '#FFD9BA', '#D9BAFF', '#FFB3BA'],
+            '商务蓝 (Business)': ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2'],
+            '温馨暖色 (Warm)': ['#8B4513', '#CD5C5C', '#F08080', '#BC8F8F', '#DEB887', '#F5DEB3', '#FFE4B5'],
+            '清凉冷色 (Cool)': ['#4682B4', '#5F9EA0', '#66CDAA', '#7FFFD4', '#B0E0E6', '#87CEFA', '#B0C4DE']
+        }
+
+    @staticmethod
+    def process_question(df, col_name):
+        valid_data = df[col_name].dropna()
+        total_samples = len(valid_data)
+        if total_samples == 0: return None, []
+
+        all_answers = []
+        others_detail = []
+
+        for item in valid_data:
+            parts = [p.strip() for p in re.split(r'[;；]', str(item)) if p.strip()]
+            for p in parts:
+                if "其他" in p or "其它" in p:
+                    all_answers.append("其他")
+                    match = re.search(r'[（\(](.*?)[）\)]', p)
+                    if match:
+                        content = match.group(1).strip()
+                        if content: others_detail.append(content)
+                    else:
+                        content = p.replace("其他", "").replace("其它", "").strip("()（） ")
+                        if content: others_detail.append(content)
+                else:
+                    all_answers.append(p)
+
+        counts = Counter(all_answers)
+        res_df = pd.DataFrame({
+            "选项": list(counts.keys()),
+            "频数": list(counts.values()),
+            "占比(%)": [(v / total_samples) * 100 for v in counts.values()]
+        })
+        return res_df, others_detail
+
+# ==========================================
+# 🎨 第二部分：UI 界面与图文一体化排版
+# ==========================================
+# --- 1. 全局配置与 PDF 级白皮书 CSS ---
 st.set_page_config(page_title="棍棍的数据分析日记", page_icon="📒", layout="wide")
 
 st.markdown("""
@@ -12,28 +67,23 @@ st.markdown("""
     .stApp { background-color: #F4F6F9; }
     html, body, [class*="st-"] {
         font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif !important;
-        font-size: 16px !important; 
-        font-weight: 600 !important; 
-        color: #2C3E50;
+        font-size: 16px !important; font-weight: 600 !important; color: #2C3E50;
     }
-    h1 { color: #FF69B4 !important; text-align: center; font-weight: 900 !important; font-size: 2.8rem !important; text-shadow: 2px 2px 4px rgba(255,105,180,0.15); margin-bottom: 0.5rem !important; }
+    h1 { color: #FF69B4 !important; text-align: center; font-weight: 900 !important; font-size: 2.6rem !important; margin-bottom: 0.5rem !important; }
     .block-container { padding-top: 1.5rem !important; padding-bottom: 1.5rem !important; max-width: 96% !important; } 
     
-    /* 高级白底卡片，带有边框和阴影 */
-    .card-box, div[data-testid="stMetric"] {
-        background-color: #FFFFFF; 
-        border: 1px solid #DCDFE6; /* 明显的边框颜色 */
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
-        padding: 20px; 
+    /* 核心：卡片化统一边框，模拟 PDF 报表块 */
+    .report-card {
+        background-color: #FFFFFF; border: 1px solid #DCDFE6; 
+        border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); 
+        padding: 20px; height: 100%;
     }
-    
-    /* 强制给表格区域加上边框感 */
     [data-testid="stDataFrame"] { border: 1px solid #EBEEF5; border-radius: 8px; overflow: hidden; }
-    
     div[data-testid="stMetricValue"] { font-size: 2rem !important; font-weight: 900 !important; color: #FF69B4 !important;}
-    .legend-text { font-size: 15px !important; color: #444; font-weight: 500 !important; margin-bottom: 8px;}
-    .legend-text b { color: #2C3E50; font-weight: 800 !important; }
+    
+    /* 图例文字更加紧凑，字号适中 */
+    .legend-text { font-size: 14.5px !important; color: #444; margin-bottom: 8px; line-height: 1.5;}
+    .legend-text b { color: #2C3E50; font-weight: 800 !important; font-size: 15px;}
     </style>
     """, unsafe_allow_html=True)
 
@@ -74,7 +124,7 @@ if uploaded_file:
         res_df, others_list = SurveyEngine.process_question(df, selected_q)
 
         if res_df is not None:
-            # === 安全顺延标号逻辑 ===
+            # === 安全顺延标号 (自动分配 G 等) ===
             res_df["现有标号"] = res_df["选项"].apply(extract_existing_letter)
             existing_letters = res_df["现有标号"].dropna().tolist()
             next_char_code = ord(max(existing_letters)) + 1 if existing_letters else ord('A')
@@ -90,76 +140,71 @@ if uploaded_file:
             res_df["简称"] = final_labels
             res_df["纯净解释"] = res_df["选项"].apply(clean_full_text)
             
-            # 强制按 ABCD 正常排序
+            # 强制按 ABCD 排序
             res_df = res_df.sort_values(by="简称", ascending=True).reset_index(drop=True)
             legend_dict = dict(zip(res_df["简称"], res_df["纯净解释"]))
 
             # ==========================================
-            # 🚀 全新布局：左边表格，右边图表+文字+其他
+            # 🚀 终极版式：左边数据表，右边(图表+文字)同框
             # ==========================================
-            col_left_table, col_right_visuals = st.columns([1, 1.4], gap="large")
+            col_left_table, col_right_visuals = st.columns([1, 1.8], gap="large")
             
             # ---------------- 左侧：数据表格 ----------------
             with col_left_table:
-                st.markdown('<div class="card-box" style="height: 100%;">', unsafe_allow_html=True)
+                st.markdown('<div class="report-card">', unsafe_allow_html=True)
                 st.markdown("### 📋 频率明细表")
-                
-                # 表格展示（包含简称和纯净文本）
                 st.dataframe(
                     res_df[["简称", "选项", "频数", "占比(%)"]].style.format({"占比(%)": "{:.2f}%"}),
                     use_container_width=True, hide_index=True, height=450
                 )
-                
-                # 导出按钮
                 csv_data = res_df[["选项", "频数", "占比(%)"]].to_csv(index=False).encode('utf-8-sig')
                 st.download_button("📥 导出表格 (CSV)", data=csv_data, file_name=f"棍棍日记_{selected_q[:5]}.csv", use_container_width=True)
                 st.markdown('</div>', unsafe_allow_html=True)
 
-            # ---------------- 右侧：瀑布流视觉区 ----------------
+            # ---------------- 右侧：图文一体化 (完美对标 PDF) ----------------
             with col_right_visuals:
-                st.markdown('<div class="card-box">', unsafe_allow_html=True)
+                # 整个右侧被一个 report-card 纯白卡片包裹，实现“图和文字在一起”
+                st.markdown('<div class="report-card">', unsafe_allow_html=True)
                 
-                # 【1. 顶部：图表切换与饼图】
-                chart_type = st.radio("视图切换", ["实心饼状图", "横向柱状图"], horizontal=True, label_visibility="collapsed")
+                chart_type = st.radio("视图", ["实心饼状图", "横向细柱状图"], horizontal=True, label_visibility="collapsed")
+                st.markdown("<hr style='margin: 5px 0 15px 0; border: 0; border-top: 1px solid #EEE;'>", unsafe_allow_html=True)
                 
-                if chart_type == "实心饼状图":
-                    fig = px.pie(res_df, names="简称", values="频数", color_discrete_sequence=current_colors)
-                    fig.update_traces(textposition='inside', textinfo='percent+label', insidetextfont=dict(color='white', size=16, family='Arial Black', weight='bold'))
-                else:
-                    fig = px.bar(res_df, x="频数", y="简称", text="占比(%)", orientation='h', color="简称", color_discrete_sequence=current_colors)
-                    fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside', textfont=dict(size=15, weight='bold'))
-                    fig.update_layout(yaxis=dict(autorange="reversed"), bargap=0.4, showlegend=False)
+                # 内部再次切分：图表在左，图例文字紧贴在右
+                inner_chart, inner_text = st.columns([1.2, 1], gap="medium")
                 
-                fig.update_layout(
-                    height=380, plot_bgcolor='#FFFFFF', paper_bgcolor='#FFFFFF',
-                    margin=dict(t=10, l=10, r=20, b=10),
-                    xaxis=dict(showgrid=True, gridcolor='#F0F2F6', title=""), yaxis=dict(showgrid=True, gridcolor='#F0F2F6', title="")
-                )
-                st.plotly_chart(fig, use_container_width=True)
-                
-                st.markdown("---") # 分割线
-                
-                # 【2. 中部：选项文字解释】
-                st.markdown("#### 📌 选项说明")
-                # 使用两列并排展示，节省空间
-                col_leg1, col_leg2 = st.columns(2)
-                items = list(legend_dict.items())
-                for i, (short_k, pure_v) in enumerate(items):
-                    if i % 2 == 0:
-                        col_leg1.markdown(f"<div class='legend-text'><b>{short_k}</b> — {pure_v}</div>", unsafe_allow_html=True)
+                with inner_chart:
+                    # 图表区域
+                    if chart_type == "实心饼状图":
+                        fig = px.pie(res_df, names="简称", values="频数", color_discrete_sequence=current_colors)
+                        fig.update_traces(textposition='inside', textinfo='percent+label', insidetextfont=dict(color='white', size=16, family='Arial Black', weight='bold'))
                     else:
-                        col_leg2.markdown(f"<div class='legend-text'><b>{short_k}</b> — {pure_v}</div>", unsafe_allow_html=True)
+                        fig = px.bar(res_df, x="频数", y="简称", text="占比(%)", orientation='h', color="简称", color_discrete_sequence=current_colors)
+                        fig.update_traces(texttemplate='%{text:.1f}%', textposition='outside', textfont=dict(size=14, weight='bold'))
+                        fig.update_layout(yaxis=dict(autorange="reversed"), bargap=0.45, showlegend=False) # bargap=0.45 让柱子更细更精致
+                    
+                    fig.update_layout(
+                        height=360, plot_bgcolor='#FFFFFF', paper_bgcolor='#FFFFFF',
+                        margin=dict(t=10, l=10, r=10, b=10),
+                        xaxis=dict(showgrid=True, gridcolor='#F0F2F6', title=""), yaxis=dict(showgrid=True, gridcolor='#F0F2F6', title="")
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
                 
-                # 【3. 底部：“其他”原话提取】
-                if others_list:
-                    st.markdown("---") # 分割线
-                    st.markdown("#### 📝 【其他】补充明细")
-                    for text in set(others_list):
-                        st.markdown(f"<div class='legend-text' style='color:#E67E22;'>🔹 {text}</div>", unsafe_allow_html=True)
+                with inner_text:
+                    # 文字区域：紧紧挨着图表
+                    st.markdown("<h4 style='color:#34495E; margin-bottom:15px;'>📌 选项说明</h4>", unsafe_allow_html=True)
+                    for short_k, pure_v in legend_dict.items():
+                        st.markdown(f"<div class='legend-text'><b>{short_k}</b> — {pure_v}</div>", unsafe_allow_html=True)
+                    
+                    # 提取出的“其他”文本也会自然地显示在图表旁边
+                    if others_list:
+                        st.markdown("<h4 style='color:#E67E22; margin-top:20px; font-size:15px;'>📝 【其他】原话提取：</h4>", unsafe_allow_html=True)
+                        for text in set(others_list):
+                            st.markdown(f"<div class='legend-text' style='color:#7F8C8D;'>🔹 {text}</div>", unsafe_allow_html=True)
                 
+                # 闭合右侧的大卡片
                 st.markdown('</div>', unsafe_allow_html=True)
 
     except Exception as e:
-        st.error(f"❌ 读取日记时遇到问题: {e}")
+        st.error(f"❌ 读取数据时遇到问题: {e}")
 else:
     st.info("💡 棍棍，请在左侧上传数据文件，开启今天的分析日记吧！")

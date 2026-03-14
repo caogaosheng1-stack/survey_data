@@ -1,5 +1,5 @@
 """cross_analysis.py — 交叉分析模块
-支持两变量交叉 + 第三维度过滤，多选题自动 explode，4 种可视化图表。
+支持两变量交叉 + 第三维度过滤，多选题自动 explode，5 种可视化图表。
 """
 import streamlit as st
 import pandas as pd
@@ -60,7 +60,7 @@ def render(df, colors):
         )
     with chart_col:
         chart_type = st.radio(
-            '图表类型', ['分组柱状图', '堆叠柱状图', '热力图', '气泡图'],
+            '图表类型', ['分组柱状图', '堆叠柱状图', '热力图', '气泡图', '折线图'],
             horizontal=True, key='cross_chart_type'
         )
 
@@ -109,7 +109,6 @@ def render(df, colors):
             file_name=f'交叉_{row_col[:4]}x{col_col[:4]}.csv',
             use_container_width=True
         )
-        # 样本量说明
         if filter_col:
             st.caption(f'注：已按「{filter_col} = {filter_val}」过滤，多选题已拆分展开，合计可能超过总样本量。')
         else:

@@ -160,9 +160,23 @@ class SurveyEngine:
         dff[row_col] = dff[row_col].astype(str).str.strip()
         dff[col_col] = dff[col_col].astype(str).str.strip()
 
+        # 过滤掉字符串 'nan' / 'None' / 空字符串（explode 后的残留脏数据）
+        _bad = {'nan', 'none', 'null', '', 'na'}
+        dff = dff[~dff[row_col].str.lower().isin(_bad)]
+        dff = dff[~dff[col_col].str.lower().isin(_bad)]
+
+        if dff.empty:
+            empty = pd.DataFrame()
+            return empty, empty, empty
+
         freq = pd.crosstab(dff[row_col], dff[col_col])
+        # 交叉表本身的 NaN 用 0 填充（某组合无数据时显示 0 而非 nan）
+        freq = freq.fillna(0).astype(int)
         row_pct = freq.div(freq.sum(axis=1), axis=0) * 100
         col_pct = freq.div(freq.sum(axis=0), axis=1) * 100
+        # 百分比中可能因除以 0 产生 NaN，同样填 0
+        row_pct = row_pct.fillna(0)
+        col_pct = col_pct.fillna(0)
 
         return freq, row_pct.round(2), col_pct.round(2)
 

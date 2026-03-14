@@ -2,3 +2,7 @@ streamlit>=1.35.0
 pandas
 plotly
 openpyxl
+scipy
+wordcloud
+jieba
+kaleido

@@ -54,18 +54,22 @@ class SurveyEngine:
             parts = [p.strip() for p in re.split(r'[;；]', str(item)) if p.strip()]
             for p in parts:
                 if '其他' in p or '其它' in p:
+                    # 统一归为「其他」一类，不再细分「其他（xxx）」变体
                     all_answers.append('其他')
+                    # 提取括号内容作为补充说明展示，不作为独立选项计数
                     match = re.search(r'[（\(](.*?)[）\)]', p)
                     if match:
                         content = match.group(1).strip()
                         if content:
                             others_detail.append(content)
                     else:
-                        content = p.replace('其他', '').replace('其它', '').strip('()（） ')
+                        content = p.replace('其他', '').replace('其它', '').strip('()（） :：')
                         if content:
                             others_detail.append(content)
                 else:
-                    all_answers.append(p)
+                    # 普通选项：去掉尾部括号补充说明，只保留主体内容
+                    clean_p = re.sub(r'[（\(][^）\)]*[）\)]$', '', p).strip()
+                    all_answers.append(clean_p if clean_p else p)
 
         counts = Counter(all_answers)
         res_df = pd.DataFrame({

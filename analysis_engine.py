@@ -102,11 +102,26 @@ class SurveyEngine:
     # 交叉分析：将多选列 explode 为单值
     # ------------------------------------------------------------------
     @staticmethod
+    def _normalize_other(val):
+        """
+        将任何包含「其他」/「其它」的单元格值统一替换为「其他」。
+        用于 explode 之后的列清洗，避免「F. 其他」「G. 其他」等变体在交叉表中变成多列。
+        """
+        s = str(val).strip()
+        if '其他' in s or '其它' in s:
+            return '其他'
+        # 去掉选项字母前缀（如 "A. "、"B、"）只保留文字主体，保持与单题分析一致
+        s = re.sub(r'^[A-Za-z][.、\s]+', '', s).strip()
+        return s if s else val
+
+    @staticmethod
     def explode_column(df, col_name):
         """
         将含分号的多选列拆分展开，返回新 DataFrame（行数会增加）。
         若为单选列，原样返回。
+        展开后自动将所有「其他」变体统一为「其他」，避免交叉表出现多个「其他」列。
         """
+        import re as _re
         series = df[col_name].dropna()
         if series.astype(str).str.contains(r'[;；]').any():
             expanded = df.copy()
@@ -114,8 +129,11 @@ class SurveyEngine:
             expanded = expanded.explode(col_name)
             expanded[col_name] = expanded[col_name].str.strip()
             expanded = expanded[expanded[col_name] != '']
-            return expanded
-        return df.copy()
+        else:
+            expanded = df.copy()
+        # 统一「其他」变体 + 去掉字母前缀
+        expanded[col_name] = expanded[col_name].apply(SurveyEngine._normalize_other)
+        return expanded
 
     # ------------------------------------------------------------------
     # 交叉表计算

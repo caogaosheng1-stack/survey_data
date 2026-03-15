@@ -173,13 +173,34 @@ class SurveyEngine:
         # 交叉表本身的 NaN 用 0 填充（某组合无数据时显示 0 而非 nan）
         freq = freq.fillna(0).astype(int)
 
-        # ── 行索引智能排序：纯数字按数值升序，文字按原始出现顺序 ──
+        # ── 行/列索引智能排序 ──
+        # 规则：
+        #   1. "X以下" / "X岁以下" → 排在数值 X 之前（key = X - 0.5）
+        #   2. "X-Y" / "X~Y" 区间  → 排在 X 位置
+        #   3. "X以上" / "X岁以上" → 排在数值 X 之后（key = X + 0.5）
+        #   4. 纯数字              → 按数值
+        #   5. 纯文字              → 字典序，排在所有数字后面
         def _sort_index(idx):
             def _key(v):
                 s = str(v).strip()
-                # 提取开头的数字部分（如 "18-25岁" 提取 18，"A.男" 提取不到则用文字排序）
+                # 「X以下」
+                m = re.match(r'^([\d.]+)\s*(?:岁|元|人|年|%)?\s*以下', s)
+                if m:
+                    return (0, float(m.group(1)) - 0.5)
+                # 「X以上」
+                m = re.match(r'^([\d.]+)\s*(?:岁|元|人|年|%)?\s*以上', s)
+                if m:
+                    return (0, float(m.group(1)) + 0.5)
+                # 「X-Y」或「X~Y」区间，取左端点
+                m = re.match(r'^([\d.]+)\s*[-~～至到]', s)
+                if m:
+                    return (0, float(m.group(1)))
+                # 纯数字开头
                 m = re.match(r'^([\d.]+)', s)
-                return (0, float(m.group(1))) if m else (1, s)
+                if m:
+                    return (0, float(m.group(1)))
+                # 纯文字
+                return (1, s)
             return sorted(idx, key=_key)
 
         sorted_rows = _sort_index(freq.index.tolist())

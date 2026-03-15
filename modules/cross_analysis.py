@@ -1,27 +1,11 @@
 """cross_analysis.py — 交叉分析模块
 支持两变量交叉 + 第三维度过滤，多选题自动 explode，5 种可视化图表。
-布局：左侧交叉表，右侧「图表 + 列标签说明」整体一张卡片，方便截图。
+图例放在图表正下方，行变量+列变量说明紧凑水平排列，整体一张卡片方便截图。
 """
 import streamlit as st
 import pandas as pd
 from analysis_engine import SurveyEngine
 from modules.chart_builder import build_cross_chart
-
-
-def _make_legend_html(index_vals, col_vals):
-    """生成行变量与列变量的简称说明 HTML，放在图表下方。"""
-    # 为行变量（index）和列变量（columns）各生成一组说明
-    lines = []
-    # 列变量说明（图例项）
-    for i, v in enumerate(col_vals):
-        letter = chr(ord('A') + i)
-        lines.append(
-            f"<span style='display:inline-block;margin:2px 10px 2px 0;"
-            f"font-size:13px;color:#444;'>"
-            f"<b style='color:#2C3E50;'>{letter}</b> — {v}</span>"
-        )
-    return '<div style="margin-top:10px;line-height:1.8;padding:8px 4px 0 4px;' \
-           'border-top:1px solid #EEE;"\u003e' + ''.join(lines) + '</div>'
 
 
 def render(df, colors):
@@ -36,14 +20,14 @@ def render(df, colors):
     preset_row = None
     with preset_col1:
         if st.button('性别 x ...', use_container_width=True):
-            gender_candidates = [q for q in questions if '性别' in q or 'gender' in q.lower()]
-            if gender_candidates:
-                preset_row = gender_candidates[0]
+            cands = [q for q in questions if '性别' in q or 'gender' in q.lower()]
+            if cands:
+                preset_row = cands[0]
     with preset_col2:
         if st.button('年龄 x ...', use_container_width=True):
-            age_candidates = [q for q in questions if '年龄' in q or 'age' in q.lower()]
-            if age_candidates:
-                preset_row = age_candidates[0]
+            cands = [q for q in questions if '年龄' in q or 'age' in q.lower()]
+            if cands:
+                preset_row = cands[0]
     with preset_col3:
         st.caption('或手动选择下方变量')
 
@@ -107,7 +91,7 @@ def render(df, colors):
     show_df = display_map[table_mode]
     chart_df = display_map[table_mode]
 
-    # ── 左表 右图（图+说明整体一张卡片）布局 ──
+    # ── 左表 右（图+图例整体卡片）布局 ──
     left, right = st.columns([1, 1.6], gap='large')
 
     with left:
@@ -137,34 +121,58 @@ def render(df, colors):
         st.markdown('</div>', unsafe_allow_html=True)
 
     with right:
-        # 整体一张卡片：图表在上，列变量标签说明在下
         st.markdown('<div class="report-card">', unsafe_allow_html=True)
         st.markdown(f'#### 📊 {chart_type} — {row_col[:15]} × {col_col[:15]}')
 
         try:
             fig = build_cross_chart(chart_df, chart_type, colors)
+            # 隐藏 Plotly 内置图例，避免与下方说明重复
+            fig.update_layout(showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
         except Exception as e:
             st.error(f'图表生成失败：{e}')
+            st.markdown('</div>', unsafe_allow_html=True)
+            return
 
-        # ── 列变量选项说明（图表正下方，整体截图友好）──
+        # ── 图例说明：图表正下方，行变量 + 列变量分两行，紧凑水平排列 ──
+        row_vals = chart_df.index.tolist()
         col_vals = chart_df.columns.tolist()
-        if len(col_vals) > 0:
-            st.markdown('<hr style="margin:8px 0 6px 0;border:0;border-top:1px solid #EEE;">',
-                        unsafe_allow_html=True)
-            st.markdown(f"<p style='font-size:13px;color:#888;margin:0 0 6px 0;'>"
-                        f"📌 列变量「{col_col[:20]}」选项说明：</p>",
-                        unsafe_allow_html=True)
-            legend_items = ''
-            for i, v in enumerate(col_vals):
-                letter = chr(ord('A') + i)
-                legend_items += (
-                    f"<span style='display:inline-block;margin:2px 12px 4px 0;"
-                    f"font-size:13px;color:#444;'>"
-                    f"<b style='color:#2C3E50;'>{letter}</b> — {v}</span>"
-                )
+
+        st.markdown(
+            "<hr style='margin:8px 0;border:0;border-top:1px solid #EBEEF5;'>",
+            unsafe_allow_html=True
+        )
+
+        # 行变量说明（X轴分组，用灰色方块标记）
+        if row_vals:
+            row_items = ''.join(
+                f"<span style='display:inline-block;margin:2px 14px 3px 0;"
+                f"font-size:13px;color:#444;white-space:nowrap;'>"
+                f"<b style='color:#2C3E50;'>{chr(ord('A') + i)}</b>"
+                f"<span style='color:#bbb;margin:0 3px;'>—</span>{v}</span>"
+                for i, v in enumerate(row_vals)
+            )
             st.markdown(
-                f"<div style='line-height:1.9;'>{legend_items}</div>",
+                f"<div style='margin-bottom:5px;line-height:2;'>"
+                f"<span style='font-size:12px;color:#999;margin-right:6px;'>"
+                f"行（{row_col[:10]}）：</span>{row_items}</div>",
+                unsafe_allow_html=True
+            )
+
+        # 列变量说明（图例色块 + 字母 + 文字）
+        if col_vals:
+            col_items = ''.join(
+                f"<span style='display:inline-block;margin:2px 14px 3px 0;"
+                f"font-size:13px;color:#444;white-space:nowrap;'>"
+                f"<b style='color:{colors[i % len(colors)]};font-size:16px;'>■</b> "
+                f"<b style='color:#2C3E50;'>{chr(ord('A') + i)}</b>"
+                f"<span style='color:#bbb;margin:0 3px;'>—</span>{v}</span>"
+                for i, v in enumerate(col_vals)
+            )
+            st.markdown(
+                f"<div style='line-height:2;'>"
+                f"<span style='font-size:12px;color:#999;margin-right:6px;'>"
+                f"列（{col_col[:10]}）：</span>{col_items}</div>",
                 unsafe_allow_html=True
             )
 

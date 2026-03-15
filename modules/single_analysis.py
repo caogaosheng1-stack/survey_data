@@ -1,6 +1,5 @@
 """single_analysis.py — 单题分析模块
 完整迁移原 app.py 的单题分析逻辑，保持「左表右图」布局不变，新增雷达图、颜色微调、PNG 导出。
-乱码修复：所有 st.* widget 的 label 参数中去掉 emoji，只在 HTML/markdown 中使用 emoji。
 """
 import streamlit as st
 import pandas as pd
@@ -73,16 +72,21 @@ def render(df, colors):
         st.markdown("<hr style='margin:5px 0 15px 0;border:0;border-top:1px solid #EEE;'>",
                     unsafe_allow_html=True)
 
-        # ── 颜色微调（label 中不使用 emoji，避免乱码）──
+        # ── 颜色微调：每行最多 4 个，label 显示「简称: 前6字」避免重叠 ──
         custom_colors = []
         with st.expander('颜色微调（可选）', expanded=False):
-            cols_picker = st.columns(min(len(res_df), 6))
-            for i, row in res_df.iterrows():
-                default = colors[i % len(colors)]
-                picked = cols_picker[i % len(cols_picker)].color_picker(
-                    row['简称'], default, key=f'cp_{i}'
-                )
-                custom_colors.append(picked)
+            n_opts = len(res_df)
+            n_cols = min(n_opts, 4)  # 每行最多 4 列，防止 label 文字重叠
+            for row_start in range(0, n_opts, n_cols):
+                chunk = res_df.iloc[row_start:row_start + n_cols]
+                picker_cols = st.columns(n_cols)
+                for j, (idx, opt_row) in enumerate(chunk.iterrows()):
+                    default = colors[idx % len(colors)]
+                    short_label = f"{opt_row['简称']}: {opt_row['纯净解释'][:5]}"
+                    picked = picker_cols[j].color_picker(
+                        short_label, default, key=f'cp_{idx}'
+                    )
+                    custom_colors.append(picked)
         active_colors = custom_colors if custom_colors else colors
 
         # ── 图表标题 ──

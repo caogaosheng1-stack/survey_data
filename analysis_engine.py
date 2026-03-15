@@ -172,6 +172,20 @@ class SurveyEngine:
         freq = pd.crosstab(dff[row_col], dff[col_col])
         # 交叉表本身的 NaN 用 0 填充（某组合无数据时显示 0 而非 nan）
         freq = freq.fillna(0).astype(int)
+
+        # ── 行索引智能排序：纯数字按数值升序，文字按原始出现顺序 ──
+        def _sort_index(idx):
+            def _key(v):
+                s = str(v).strip()
+                # 提取开头的数字部分（如 "18-25岁" 提取 18，"A.男" 提取不到则用文字排序）
+                m = re.match(r'^([\d.]+)', s)
+                return (0, float(m.group(1))) if m else (1, s)
+            return sorted(idx, key=_key)
+
+        sorted_rows = _sort_index(freq.index.tolist())
+        sorted_cols = _sort_index(freq.columns.tolist())
+        freq = freq.loc[sorted_rows, sorted_cols]
+
         row_pct = freq.div(freq.sum(axis=1), axis=0) * 100
         col_pct = freq.div(freq.sum(axis=0), axis=1) * 100
         # 百分比中可能因除以 0 产生 NaN，同样填 0
